@@ -2,6 +2,8 @@ name: Docker Publish
 
 on:
   push:
+    branches:
+      - main
     tags:
       - "v*"
 
@@ -32,9 +34,9 @@ jobs:
         with:
           images: ghcr.io/${{ github.repository_owner }}/ns-hotopic
           tags: |
-            type=ref,event=tag
             type=sha,prefix=sha-
-            type=raw,value=latest
+            type=ref,event=tag
+            type=raw,value=latest,enable={{is_default_branch}}
 
       - name: Build and push image
         uses: docker/build-push-action@v6

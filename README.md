@@ -1,80 +1,135 @@
 # ns-hotopic
 
-NodeSeek 首页热点追踪工具。项目定时抓取首页列表页，保存快照到 SQLite，计算热点榜，并通过 Telegram Bot 提供查看与订阅功能。
+NodeSeek 首页热点追踪工具。
 
-## 功能简介
+[English README](./README.en.md)
 
-- 定时抓取 NodeSeek 首页列表页，不抓详情页
-- 保存帖子标题、链接、浏览数、评论数、位置等首页快照
-- 计算“最近 6 小时升温榜”
-- 单独输出“抽奖贴”列表
-- Telegram Bot 支持查看热点、查看抽奖贴、订阅热点推送
-- SQLite 持久化存储，内置数据清理策略
+## 它能做什么
+
+- 每隔一段时间抓取 NodeSeek 首页列表页
+- 保存标题、链接、浏览数、评论数等快照到 SQLite
+- 计算热点榜
+- 输出抽奖贴列表
+- 提供 Telegram Bot 查看和订阅热点推送
 - 提供 Docker Compose 部署方式
 
-## 工作原理
+## 部署前你需要知道
 
-`ns-hotopic` 当前使用 Playwright 抓取 NodeSeek 首页。由于目标站点可能出现 Cloudflare 验证，首次运行需要人工完成一次验证，并把 Playwright 浏览器状态保存为 `state/storage_state.json`。之后定时抓取会复用这份状态文件。
-
-注意：
-
-- `storage_state.json` 不是你日常浏览器的配置目录
-- 它来自 Playwright 独立浏览器上下文
-- 文件中通常包含 cookie / localStorage 等状态信息
-- 状态文件可能失效，失效后重新执行一次初始化即可
-
-## 快速开始
-
-### 1. 本地开发环境
-
-要求：
-
-- Python 3.12+
-- `uv`
-
-安装依赖：
-
-```bash
-uv sync
-```
-
-复制环境变量模板：
-
-```bash
-cp .env.example .env
-```
-
-至少需要配置：
-
-```dotenv
-TELEGRAM_BOT_TOKEN=replace-me
-```
-
-### 2. 初始化 Cloudflare 状态
-
-首次需要在可见浏览器里完成一次验证：
-
-```bash
-uv run ns-hotopic trial-once
-```
-
-执行后会打开一个独立浏览器窗口。你在窗口里完成 Cloudflare 验证，并进入 NodeSeek 首页后，程序会自动保存状态文件：
+这个项目当前依赖 Playwright 抓 NodeSeek 首页。  
+首次使用前，需要先人工完成一次 Cloudflare 验证，并生成：
 
 ```text
 state/storage_state.json
 ```
 
-可以用下面的命令确认状态文件可用：
+后续 Docker 容器会直接复用这个文件。
+
+## 1. 本地生成 `storage_state.json`
+
+先在本地准备环境：
+
+```bash
+git clone https://github.com/Impersonality/ns-hotopic.git
+cd ns-hotopic
+uv sync
+cp .env.example .env
+```
+
+然后运行：
+
+```bash
+uv run ns-hotopic trial-once
+```
+
+会打开一个独立浏览器窗口。你只需要：
+
+1. 完成 Cloudflare 验证
+2. 确认页面已经进入 NodeSeek 首页
+3. 等命令结束
+
+成功后会生成：
+
+```text
+state/storage_state.json
+```
+
+建议马上验证一次：
 
 ```bash
 uv run ns-hotopic fetch-once
 ```
 
-如果抓取成功，说明后续定时任务可以复用这份状态。
+如果能抓取成功，说明这个文件可以用。
 
-## 本地使用
+## 2. 用 Docker Compose 部署到 VPS
 
-### 单次命令
+在 VPS 上执行：
+
+```bash
+git clone https://github.com/Impersonality/ns-hotopic.git
+cd ns-hotopic
+mkdir -p data state artifacts
+cp .env.example .env
+```
+
+编辑 `.env`，至少填入：
+
+```dotenv
+TELEGRAM_BOT_TOKEN=你的_bot_token
+```
+
+然后把你本地生成好的 `storage_state.json` 上传到 VPS：
+
+```bash
+scp state/storage_state.json user@your-vps:~/ns-hotopic/state/storage_state.json
+```
+
+这里的远端路径要对应你的项目目录，例如你把项目放在 `~/ns-hotopic`，那上传目标就应该是：
+
+```text
+~/ns-hotopic/state/storage_state.json
+```
+
+### 这份文件在 Docker Compose 里怎么用？
+
+因为 [compose.yaml](/home/kg/Code/python/ns_hotopic/compose.yaml) 已经把宿主机目录挂载进容器：
+
+- `./state:/app/state`
+- `./data:/app/data`
+- `./artifacts:/app/artifacts`
+
+所以：
+
+- 你上传到 VPS 的 `./state/storage_state.json`
+- 会在容器里变成 `/app/state/storage_state.json`
+- 程序启动后会自动读取它
+
+不用再手动复制到容器内部。
+
+### 启动服务
+
+如果你要直接从源码构建并运行：
+
+```bash
+docker compose up -d --build
+```
+
+如果你要使用 GitHub Actions 构建好的镜像，先在 `.env` 里加上：
+
+```dotenv
+NS_HOTOPIC_IMAGE=ghcr.io/impersonality/ns-hotopic:latest
+```
+
+然后运行：
+
+```bash
+docker compose pull
+docker compose up -d
+```
+
+## 常用命令
+
+本地调试：
 
 ```bash
 uv run ns-hotopic trial-once
@@ -87,84 +142,29 @@ uv run ns-hotopic cleanup
 uv run ns-hotopic service-run
 ```
 
-其中：
-
-- `trial-once`：打开浏览器，人工完成首次验证并抓取一次
-- `fetch-once`：复用状态文件，执行一次无头抓取
-- `service-run`：同时运行 Telegram Bot 和后台定时任务
-
-## Docker Compose 部署
-
-### 方案 A：从源码构建并部署
-
-1. 在 VPS 上克隆仓库
-2. 复制环境变量模板
-3. 上传 `storage_state.json`
-4. 启动服务
-
-远端目录准备：
+Docker 查看日志：
 
 ```bash
-mkdir -p ~/ns-hotopic/{data,state,artifacts}
+docker compose logs -f
 ```
 
-从本地上传状态文件：
+停止服务：
 
 ```bash
-scp state/storage_state.json user@your-vps:~/ns-hotopic/state/storage_state.json
+docker compose down
 ```
 
-在 VPS 上启动：
+## Telegram Bot 功能
 
-```bash
-cd ~/ns-hotopic
-cp .env.example .env
-docker compose up -d --build
-```
-
-### 方案 B：使用 GHCR 镜像
-
-项目在打 tag 时会发布 GHCR 镜像。你可以在 `.env` 或 shell 环境中指定镜像：
-
-```dotenv
-NS_HOTOPIC_IMAGE=ghcr.io/impersonality/ns-hotopic:latest
-```
-
-然后执行：
-
-```bash
-docker compose pull
-docker compose up -d
-```
-
-### Compose 挂载目录
-
-Compose 会持久化以下目录：
-
-- `./data`：SQLite 数据库
-- `./state`：Playwright 浏览器状态
-- `./artifacts`：抓取页面 HTML 归档
-
-## Telegram Bot
-
-Bot 命令：
-
-- `/hot`：查看热点榜
-- `/lottery`：查看最近一轮抓取中的抽奖贴
-- `/subscribe`：订阅热点推送
-- `/unsubscribe`：取消热点推送
-- `/help`：查看帮助
-
-热点推送支持的间隔：
-
-- 30 分钟
-- 1 小时
-- 6 小时
-- 24 小时
+- `/hot` 查看热点榜
+- `/lottery` 查看抽奖贴
+- `/subscribe` 订阅热点推送
+- `/unsubscribe` 取消热点推送
+- `/help` 查看帮助
 
 ## 配置项
 
-### 应用配置
+`.env` 常用配置：
 
 ```dotenv
 NODESEEK_HOME_URL=https://www.nodeseek.com/
@@ -178,113 +178,40 @@ NS_HOTOPIC_ARTIFACT_RETENTION_DAYS=7
 NS_HOTOPIC_FETCH_INTERVAL_MINUTES=30
 NS_HOTOPIC_DELIVERY_CHECK_INTERVAL_MINUTES=5
 NS_HOTOPIC_CLEANUP_INTERVAL_MINUTES=1440
-```
 
-### Compose 额外变量
-
-```dotenv
 TZ=Asia/Hong_Kong
 NS_HOTOPIC_IMAGE=ghcr.io/impersonality/ns-hotopic:latest
 ```
 
-## 热点算法概览
-
-当前热点榜是“最近 6 小时升温榜”：
-
-- 默认排除置顶帖
-- 默认排除抽奖 / 评论送鸡腿等活动帖
-- 6 小时窗口内出现 2 次及以上的帖子，按评论增量和浏览增量计算
-- 只出现 1 次但信号足够强的新进帖子，也可以进入榜单
-- 新帖会得到温和加成，老帖仍可上榜
-
 ## 常见问题
-
-### `storage_state.json` 一定要本机生成吗？
-
-不一定。只要是在任意有界面的环境里运行 `trial-once` 并完成验证，都可以生成这份文件。本地通常最方便。
 
 ### `storage_state.json` 会过期吗？
 
-会。Cookie 或 Cloudflare 会话失效后，需要重新执行一次：
+会。失效后重新执行：
 
 ```bash
 uv run ns-hotopic trial-once
 ```
 
-然后把新的状态文件重新上传到 VPS。
+然后重新上传新的 `state/storage_state.json` 到 VPS。
 
-### 为什么不是一键自动过 Cloudflare？
+### 一定要本机生成 `storage_state.json` 吗？
 
-当前版本选择的是最务实、最稳定的方案：首次人工验证一次，后续复用状态。对这类站点来说，这通常比“尝试完全自动绕过验证”更可维护。
+不一定。任何有界面的环境都可以生成。  
+本地通常最方便，所以 README 默认按这个路径写。
 
----
+### 为什么我没看到 Docker 镜像？
 
-## English
+现在 GitHub Actions 的镜像发布规则是：
 
-`ns-hotopic` tracks hot topics from the NodeSeek homepage. It periodically crawls the homepage list view, stores snapshots in SQLite, computes hot-topic rankings, and exposes the data through a Telegram bot.
+- `push` 到 `main`：发布 `latest` 和 `sha-*`
+- `push` 一个版本 tag，例如 `v0.1.0`：发布版本镜像和 `sha-*`
 
-### Features
+也就是说，镜像不是“创建仓库就自动有”，而是需要至少一次代码 push 到 `main`，或者推一个版本 tag。
 
-- Crawl the NodeSeek homepage list only
-- Store homepage snapshots in SQLite
-- Compute a rolling 6-hour hot-topic ranking
-- Expose a dedicated lottery-post list
-- Telegram bot commands for viewing and subscribing
-- Built-in retention cleanup
-- Docker Compose deployment support
-
-### Initialization
-
-The project currently relies on Playwright plus a saved browser state file:
-
-```text
-state/storage_state.json
-```
-
-Generate it once in a visible browser:
+如果你想发布第一个正式版本镜像，可以执行：
 
 ```bash
-uv run ns-hotopic trial-once
+git tag v0.1.0
+git push origin v0.1.0
 ```
-
-After you complete the Cloudflare check, verify it works:
-
-```bash
-uv run ns-hotopic fetch-once
-```
-
-### Docker Compose
-
-From source:
-
-```bash
-cp .env.example .env
-docker compose up -d --build
-```
-
-With GHCR image:
-
-```dotenv
-NS_HOTOPIC_IMAGE=ghcr.io/impersonality/ns-hotopic:latest
-```
-
-```bash
-docker compose pull
-docker compose up -d
-```
-
-Make sure the following directories are persisted:
-
-- `data/`
-- `state/`
-- `artifacts/`
-
-### Service mode
-
-The container runs:
-
-```bash
-ns-hotopic service-run
-```
-
-This starts the Telegram bot plus background jobs for crawling, due-message delivery, and cleanup.
