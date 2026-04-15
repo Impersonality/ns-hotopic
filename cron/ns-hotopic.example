@@ -1,0 +1,1 @@
+*/30 * * * * cd /home/kg/Code/python/ns_hotopic && /home/kg/Code/python/ns_hotopic/.venv/bin/uv run ns-hotopic fetch-once >> /home/kg/Code/python/ns_hotopic/data/cron.log 2>&1

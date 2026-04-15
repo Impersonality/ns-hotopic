@@ -1,0 +1,15 @@
+services:
+  app:
+    build:
+      context: .
+    image: ${NS_HOTOPIC_IMAGE:-ns-hotopic:local}
+    env_file:
+      - .env
+    environment:
+      TZ: ${TZ:-Asia/Hong_Kong}
+    command: ["ns-hotopic", "service-run"]
+    restart: unless-stopped
+    volumes:
+      - ./data:/app/data
+      - ./state:/app/state
+      - ./artifacts:/app/artifacts
