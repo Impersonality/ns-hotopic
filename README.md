@@ -22,7 +22,8 @@ NodeSeek 首页热点追踪工具。
 state/storage_state.json
 ```
 
-后续 Docker 容器会直接复用这个文件。
+后续 Docker 容器会直接复用这个文件。  
+自动抓取默认只会读取它，不会在 headless 抓取后覆盖它。
 
 ## 1. 本地生成 `storage_state.json`
 
@@ -188,6 +189,27 @@ uv run ns-hotopic trial-once
 ```
 
 然后重新上传新的 `state/storage_state.json` 到 VPS。
+
+### 为什么本地生成的 `storage_state.json` 传到 VPS 后只能成功一次？
+
+这通常不是 SQLite 或 Docker 挂载问题，而是 Cloudflare 会综合看：
+
+- 出口 IP
+- 浏览器指纹
+- 是否 headless
+- cookie / clearance 的上下文
+
+也就是说：
+
+- 本地浏览器过盾后导出的状态，复制到另一台 VPS 上
+- 只能算“尽量复用”
+- 不保证跨 IP、跨环境后还能长期稳定使用
+
+项目现在默认不会在 `fetch-once` / `service-run` 时回写 `storage_state.json`，避免 headless 抓取把原本还能用的状态覆盖坏。  
+如果你上传到 VPS 后依然只能成功一次，通常说明这台 VPS 的出口 IP 或指纹本身已经被 Cloudflare 重点校验。更稳的办法是：
+
+- 在和最终抓取出口更接近的环境里生成 `storage_state.json`
+- 或者直接更换更干净的 VPS / 代理出口
 
 ### 一定要本机生成 `storage_state.json` 吗？
 

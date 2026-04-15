@@ -22,7 +22,8 @@ That step produces:
 state/storage_state.json
 ```
 
-The Docker container will reuse that file later.
+The Docker container will reuse that file later.  
+Automated fetches only read it by default and do not overwrite it after headless runs.
 
 ## 1. Generate `storage_state.json` Locally
 
@@ -158,6 +159,22 @@ uv run ns-hotopic trial-once
 ```
 
 Then upload the new file again.
+
+### Why does a locally generated `storage_state.json` only work once on my VPS?
+
+This is usually not a Docker volume problem. Cloudflare may evaluate:
+
+- egress IP
+- browser fingerprint
+- whether the browser is headless
+- cookie / clearance context
+
+So a state file exported from your local browser and copied to a different VPS can only be treated as a best-effort reuse. It is not guaranteed to remain stable across IP and environment changes.
+
+The project now avoids rewriting `storage_state.json` during `fetch-once` and `service-run`, so a headless fetch does not poison a previously working state file. If the copied file still works only once on your VPS, the more likely issue is that the VPS egress IP or runtime fingerprint is being challenged again. In that case, the more reliable options are:
+
+- generate `storage_state.json` in an environment closer to the final egress IP
+- switch to a cleaner VPS or proxy egress
 
 ### Why don't I see a Docker image yet?
 

@@ -35,6 +35,7 @@ def run_trial_once(
         interactive=not headless,
         wait_timeout_seconds=wait_timeout_seconds,
         keep_open=keep_open,
+        persist_storage_state=True,
     )
 
 
@@ -56,6 +57,7 @@ def run_fetch_once(
         interactive=False,
         wait_timeout_seconds=30,
         keep_open=False,
+        persist_storage_state=False,
     )
 
 
@@ -67,6 +69,7 @@ def _run_crawl(
     interactive: bool,
     wait_timeout_seconds: int,
     keep_open: bool,
+    persist_storage_state: bool,
 ) -> CrawlResult:
     started_at = _now()
     paths.ensure_directories()
@@ -109,10 +112,13 @@ def _run_crawl(
             html = page.content()
             title = page.title()
             html_artifact_path = _write_html_artifact(paths, started_at, html)
-            context.storage_state(path=str(paths.storage_state_path))
             snapshots = parse_homepage(html, page_url)
+            challenge_detected = looks_like_challenge_page(title, html)
 
-            if looks_like_challenge_page(title, html):
+            if persist_storage_state and not challenge_detected:
+                context.storage_state(path=str(paths.storage_state_path))
+
+            if challenge_detected:
                 status = "challenge"
                 error_message = "Cloudflare challenge page detected."
             elif not snapshots:
