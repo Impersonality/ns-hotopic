@@ -1,3 +1,4 @@
+import sqlite3
 from pathlib import Path
 
 from ns_hotopic.config import AppPaths
@@ -140,3 +141,38 @@ def test_hot_topic_results_are_persisted(tmp_path: Path) -> None:
     assert rankings[0]["topic_id"] == "12345"
     assert rankings[0]["rank"] == 1
     assert rankings[0]["comment_delta"] == 4
+
+
+def test_connect_migrates_bot_subscription_signature_column(tmp_path: Path) -> None:
+    paths = AppPaths(
+        root_dir=tmp_path,
+        data_dir=tmp_path / "data",
+        state_dir=tmp_path / "state",
+        artifacts_dir=tmp_path / "artifacts",
+        db_path=tmp_path / "data" / "ns_hotopic.db",
+        storage_state_path=tmp_path / "state" / "storage_state.json",
+    )
+    paths.ensure_directories()
+    raw = sqlite3.connect(paths.db_path)
+    raw.executescript(
+        """
+        CREATE TABLE bot_subscriptions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            chat_id INTEGER NOT NULL,
+            subscription_type TEXT NOT NULL,
+            interval_minutes INTEGER NOT NULL,
+            is_active INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            last_delivered_at TEXT,
+            UNIQUE(chat_id, subscription_type)
+        );
+        """
+    )
+    raw.commit()
+    raw.close()
+
+    connection = connect(paths)
+    columns = connection.execute("PRAGMA table_info(bot_subscriptions)").fetchall()
+
+    assert any(str(column["name"]) == "last_delivered_signature" for column in columns)

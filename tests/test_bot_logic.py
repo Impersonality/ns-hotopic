@@ -1,6 +1,7 @@
 import sqlite3
 from pathlib import Path
 
+import ns_hotopic.telegram_bot as telegram_bot_module
 from ns_hotopic.config import AppPaths
 from ns_hotopic.storage import (
     connect,
@@ -13,6 +14,7 @@ from ns_hotopic.telegram_bot import (
     build_hot_page_payload,
     build_hot_push_text,
     build_lottery_page_payload,
+    run_due_notifications,
 )
 
 
@@ -170,3 +172,92 @@ def test_upsert_bot_subscription_reactivates_and_updates_interval(tmp_path: Path
     assert row is not None
     assert row["interval_minutes"] == 60
     assert row["is_active"] == 1
+
+
+def test_run_due_notifications_skips_duplicate_hot_push_content(tmp_path: Path, monkeypatch) -> None:
+    paths = _make_paths(tmp_path)
+    connection = connect(paths)
+    save_hot_topic_run_result(
+        connection,
+        HotTopicRunResult(
+            source_crawl_run_id=1,
+            computed_at="2026-04-14T12:00:00+08:00",
+            window_start="2026-04-14T06:00:00+08:00",
+            window_end="2026-04-14T12:00:00+08:00",
+            algorithm_version="v-test",
+            candidate_count=1,
+            ranking_count=1,
+            rankings=[
+                HotTopicRanking(
+                    rank=1,
+                    topic_id="1",
+                    title="标题 1",
+                    url="https://www.nodeseek.com/post-1-1",
+                    score=10.0,
+                    comment_delta=1,
+                    view_delta=2,
+                    position_gain=0,
+                    appearance_count=2,
+                    earliest_position=5,
+                    latest_position=1,
+                    latest_comment_count=2,
+                    latest_view_count=5,
+                )
+            ],
+        ),
+    )
+    subscription_id = upsert_bot_subscription(
+        connection,
+        chat_id=123,
+        subscription_type="hot",
+        interval_minutes=30,
+        timestamp="2026-04-14T10:00:00+08:00",
+    )
+    message = build_hot_push_text(connection, limit=10)
+    assert message is not None
+    signature = telegram_bot_module._message_signature(message)
+    connection.execute(
+        """
+        UPDATE bot_subscriptions
+        SET last_delivered_at = ?, last_delivered_signature = ?
+        WHERE id = ?
+        """,
+        ("2026-04-14T09:00:00+08:00", signature, subscription_id),
+    )
+    connection.commit()
+
+    sent_messages: list[dict[str, object]] = []
+
+    class FakeBot:
+        def __init__(self, *, token: str) -> None:
+            self.token = token
+
+        async def initialize(self) -> None:
+            return None
+
+        async def send_message(self, **kwargs) -> None:
+            sent_messages.append(kwargs)
+
+        async def shutdown(self) -> None:
+            return None
+
+    monkeypatch.setattr(telegram_bot_module, "Bot", FakeBot)
+    monkeypatch.setattr(telegram_bot_module, "get_bot_token", lambda: "test-token")
+
+    summary = run_due_notifications(paths)
+    refreshed = connect(paths).execute(
+        "SELECT * FROM bot_subscriptions WHERE id = ?",
+        (subscription_id,),
+    ).fetchone()
+    log_row = connect(paths).execute(
+        "SELECT * FROM bot_delivery_logs ORDER BY id DESC LIMIT 1"
+    ).fetchone()
+
+    assert summary.delivered == 0
+    assert summary.skipped == 1
+    assert sent_messages == []
+    assert refreshed is not None
+    assert refreshed["last_delivered_signature"] == signature
+    assert log_row is not None
+    assert log_row["status"] == "skipped"
+    assert log_row["error_message"] == "Hot topic push content unchanged."

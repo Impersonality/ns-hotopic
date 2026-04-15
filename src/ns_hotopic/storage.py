@@ -89,6 +89,7 @@ CREATE TABLE IF NOT EXISTS bot_subscriptions (
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     last_delivered_at TEXT,
+    last_delivered_signature TEXT,
     UNIQUE(chat_id, subscription_type)
 );
 
@@ -115,8 +116,33 @@ def connect(paths: AppPaths) -> sqlite3.Connection:
     connection = sqlite3.connect(paths.db_path)
     connection.row_factory = sqlite3.Row
     connection.executescript(SCHEMA)
+    _run_migrations(connection)
     connection.commit()
     return connection
+
+
+def _run_migrations(connection: sqlite3.Connection) -> None:
+    _ensure_column(
+        connection,
+        table_name="bot_subscriptions",
+        column_name="last_delivered_signature",
+        column_definition="TEXT",
+    )
+
+
+def _ensure_column(
+    connection: sqlite3.Connection,
+    *,
+    table_name: str,
+    column_name: str,
+    column_definition: str,
+) -> None:
+    columns = connection.execute(f"PRAGMA table_info({table_name})").fetchall()
+    if any(str(row["name"]) == column_name for row in columns):
+        return
+    connection.execute(
+        f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_definition}"
+    )
 
 
 def save_crawl_result(connection: sqlite3.Connection, result: CrawlResult) -> int:
@@ -473,14 +499,15 @@ def mark_bot_subscription_delivered(
     *,
     subscription_id: int,
     delivered_at: str,
+    message_signature: str | None = None,
 ) -> None:
     connection.execute(
         """
         UPDATE bot_subscriptions
-        SET last_delivered_at = ?, updated_at = ?
+        SET last_delivered_at = ?, updated_at = ?, last_delivered_signature = COALESCE(?, last_delivered_signature)
         WHERE id = ?
         """,
-        (delivered_at, delivered_at, subscription_id),
+        (delivered_at, delivered_at, message_signature, subscription_id),
     )
     connection.commit()
 

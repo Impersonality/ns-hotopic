@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -123,6 +124,25 @@ async def send_due_notifications(paths: AppPaths | None = None) -> DeliverySumma
                 skipped += 1
                 continue
 
+            message_signature = _message_signature(message)
+            if _is_duplicate_push(subscription, message_signature):
+                mark_bot_subscription_delivered(
+                    connection,
+                    subscription_id=int(subscription["id"]),
+                    delivered_at=scheduled_for,
+                    message_signature=message_signature,
+                )
+                record_bot_delivery_log(
+                    connection,
+                    chat_id=int(subscription["chat_id"]),
+                    subscription_type=SUBSCRIPTION_TYPE_HOT,
+                    scheduled_for=scheduled_for,
+                    status="skipped",
+                    error_message="Hot topic push content unchanged.",
+                )
+                skipped += 1
+                continue
+
             try:
                 await bot.send_message(
                     chat_id=int(subscription["chat_id"]),
@@ -146,6 +166,7 @@ async def send_due_notifications(paths: AppPaths | None = None) -> DeliverySumma
                 connection,
                 subscription_id=int(subscription["id"]),
                 delivered_at=delivered_at,
+                message_signature=message_signature,
             )
             record_bot_delivery_log(
                 connection,
@@ -537,3 +558,14 @@ def _now() -> str:
 
 def run_due_notifications(paths: AppPaths | None = None) -> DeliverySummary:
     return asyncio.run(send_due_notifications(paths))
+
+
+def _message_signature(message: str) -> str:
+    return hashlib.sha256(message.encode("utf-8")).hexdigest()
+
+
+def _is_duplicate_push(subscription: sqlite3.Row, message_signature: str) -> bool:
+    previous_signature = subscription["last_delivered_signature"]
+    if previous_signature is None:
+        return False
+    return str(previous_signature) == message_signature
