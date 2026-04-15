@@ -92,7 +92,7 @@ scp state/storage_state.json user@your-vps:~/ns-hotopic/state/storage_state.json
 
 ### 这份文件在 Docker Compose 里怎么用？
 
-因为 [compose.yaml](/home/kg/Code/python/ns_hotopic/compose.yaml) 已经把宿主机目录挂载进容器：
+因为 [docker-compose.yml](/home/kg/Code/python/ns_hotopic/docker-compose.yml) 已经把宿主机目录挂载进容器：
 
 - `./state:/app/state`
 - `./data:/app/data`
@@ -108,23 +108,17 @@ scp state/storage_state.json user@your-vps:~/ns-hotopic/state/storage_state.json
 
 ### 启动服务
 
-如果你要直接从源码构建并运行：
-
-```bash
-docker compose up -d --build
-```
-
-如果你要使用 GitHub Actions 构建好的镜像，先在 `.env` 里加上：
-
-```dotenv
-NS_HOTOPIC_IMAGE=ghcr.io/impersonality/ns-hotopic:latest
-```
-
-然后运行：
+默认直接使用 GitHub Actions 发布的镜像：
 
 ```bash
 docker compose pull
 docker compose up -d
+```
+
+如需手动指定镜像版本，可在 `.env` 里设置：
+
+```dotenv
+NS_HOTOPIC_IMAGE=ghcr.io/impersonality/ns-hotopic:latest
 ```
 
 ## 常用命令

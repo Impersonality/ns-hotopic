@@ -77,7 +77,7 @@ scp state/storage_state.json user@your-vps:~/ns-hotopic/state/storage_state.json
 
 ## How `storage_state.json` Works with Docker Compose
 
-The compose file mounts these host directories into the container:
+The [docker-compose.yml](/home/kg/Code/python/ns_hotopic/docker-compose.yml) file mounts these host directories into the container:
 
 - `./state:/app/state`
 - `./data:/app/data`
@@ -99,21 +99,17 @@ You do not need to copy it into the container manually.
 
 ## Start the Service
 
-Build from source:
-
-```bash
-docker compose up -d --build
-```
-
-Use the GHCR image instead:
-
-```dotenv
-NS_HOTOPIC_IMAGE=ghcr.io/impersonality/ns-hotopic:latest
-```
+By default the compose file uses the image published by GitHub Actions:
 
 ```bash
 docker compose pull
 docker compose up -d
+```
+
+You can override the image in `.env` if needed:
+
+```dotenv
+NS_HOTOPIC_IMAGE=ghcr.io/impersonality/ns-hotopic:latest
 ```
 
 ## Useful Commands

@@ -1,14 +1,14 @@
 services:
   app:
-    build:
-      context: .
-    image: ${NS_HOTOPIC_IMAGE:-ns-hotopic:local}
+    image: ${NS_HOTOPIC_IMAGE:-ghcr.io/impersonality/ns-hotopic:latest}
     env_file:
       - .env
     environment:
       TZ: ${TZ:-Asia/Hong_Kong}
     command: ["ns-hotopic", "service-run"]
     restart: unless-stopped
+    ipc: host
+    init: true
     volumes:
       - ./data:/app/data
       - ./state:/app/state
